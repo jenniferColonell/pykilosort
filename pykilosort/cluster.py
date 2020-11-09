@@ -222,6 +222,7 @@ def initializeWdata2(call, uprojDAT, Nchan, nPCs, Nfilt, iC):
     # pick random spikes from the sample
     # WARNING: replace ceil by floor because this is a random index, and 0/1 indexing
     # discrepancy between Python and MATLAB.
+    np.random.seed(42)
     irand = np.floor(np.random.rand(Nfilt) * uprojDAT.shape[1]).astype(np.int32)
 
     W = cp.zeros((nPCs, Nchan, Nfilt), dtype=np.float32)
