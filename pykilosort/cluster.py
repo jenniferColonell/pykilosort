@@ -297,13 +297,16 @@ def mexThSpkPC(Params, dataRAW, wPCA, iC):
     # TODO: check that the copy occurs on the GPU only
     d_id2[:] = d_id[:minSize]
 
+    d_st2 = cp.zeros(minSize, dtype=np.int32, order='F')
+    d_st2[:] = d_st[:minSize]
+
     # Free memory.
     # TODO: unclear - does this do something special for cupy objects?
     #               - all of these go out of scope in the next line anyway
     del d_st, d_id, d_counter, d_Params, d_dmax, d_dout
     # free_gpu_memory()
 
-    return d_featPC, d_id2
+    return d_featPC, d_id2, d_st2
 
 
 def extractPCbatch2(proc, params, probe, wPCA, ibatch, iC, Nbatch):
@@ -336,7 +339,17 @@ def extractPCbatch2(proc, params, probe, wPCA, ibatch, iC, Nbatch):
 
     # call a CUDA function to do the hard work
     # returns a matrix of features uS, as well as the center channels for each spike
-    uS, idchan = mexThSpkPC(Params, dataRAW, wPCA, iC)
+    uS, idchan, st = mexThSpkPC(Params, dataRAW, wPCA, iC)
+
+    # sort spike events by time and chennel to get a deterministic order
+    spike_data = cp.zeros((2, len(idchan)))
+    spike_data[0] = idchan
+    spike_data[1] = st
+    sorted_id = cp.lexsort(spike_data)
+
+    # sort output by this deterministic order
+    uS = cp.asfortranarray(uS[:, sorted_id])
+    idchan = cp.asfortranarray(idchan[sorted_id])
 
     return uS, idchan
 
