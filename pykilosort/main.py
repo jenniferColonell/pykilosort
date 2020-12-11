@@ -284,6 +284,13 @@ def run(
     ctx.show_timer()
     ctx.write(timer=ctx.timer)
 
+    ir.proc._mmap.close()
+    del ir.proc
+    ir.cProj._mmap.close()
+    del ir.cProj
+    ir.cProjPC._mmap.close()
+    del ir.cProjPC
+
     return ctx
 
 
