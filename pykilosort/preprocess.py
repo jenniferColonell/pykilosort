@@ -57,6 +57,44 @@ def gpufilter(buff, chanMap=None, fs=None, fslow=None, fshigh=None, car=True):
     return datr
 
 
+#TODO: Test gpufilter against this
+def cpufilter(buff, chanMap=None, fs=None, fslow=None, fshigh=None, car=True):
+    # filter this batch of data after common average referencing with the
+    # median
+    # buff is timepoints by channels
+    # chanMap are indices of the channels to be kep
+    # params.fs and params.fshigh are sampling and high-pass frequencies respectively
+    # if params.fslow is present, it is used as low-pass frequency (discouraged)
+
+    dataRAW = buff  # .T  # NOTE: we no longer use Fortran order upstream
+    assert dataRAW.flags.c_contiguous
+    assert dataRAW.ndim == 2
+    assert dataRAW.shape[0] > dataRAW.shape[1]
+    if chanMap is not None and len(chanMap):
+        dataRAW = dataRAW[:, chanMap]  # subsample only good channels
+    assert dataRAW.ndim == 2
+
+    # subtract the mean from each channel
+    dataRAW = dataRAW - np.mean(dataRAW, axis=0)  # subtract mean of each channel
+    assert dataRAW.ndim == 2
+
+    # CAR, common average referencing by median
+    if car:
+        # subtract median across channels
+        dataRAW = dataRAW - np.median(dataRAW, axis=1)[:, np.newaxis]
+
+    # set up the parameters of the filter
+    filter_params = get_filter_params(fs, fshigh=fshigh, fslow=fslow)
+
+    # next four lines should be equivalent to filtfilt (which cannot be
+    # used because it requires float64)
+    datr = lfilter_cpu(*filter_params, dataRAW, axis=0)  # causal forward filter
+    datr = datr[::-1]
+    datr = lfilter_cpu(*filter_params, datr, axis=0)  # backward
+    datr = datr[::-1]
+    return datr
+
+
 # TODO: unclear - Do we really need these, can we not just pick a type for the config?
 #               - We can move this complexity into a "config parsing" stage.
 def _is_vect(x):
