@@ -3,7 +3,7 @@ from math import ceil
 from functools import lru_cache
 
 import numpy as np
-from scipy.signal import butter
+from scipy.signal import butter, lfilter as lfilter_cpu
 import cupy as cp
 from tqdm import tqdm
 
