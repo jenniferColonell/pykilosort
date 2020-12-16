@@ -22,11 +22,12 @@ class KilosortParams(BaseModel):
     stablemode_enabled: bool = Field(True, description="make output more stable")
     deterministicmode_enabled: bool = Field(True, description="make output deterministic by sorting spikes before applying kernels")
 
-    @validator("deterministicmode_enabled")
-    def validate_deterministicmode(v, values):
-        if values.get("stablemode_enabled"):
-            return deterministicmode_enabled
-        raise ValueError("stablemode must be enabled for deterministic results")
+    #TODO: Fix Validator
+    # @validator("deterministicmode_enabled")
+    # def validate_deterministicmode(v, values):
+    #     if values.get("stablemode_enabled"):
+    #         return deterministicmode_enabled
+    #     raise ValueError("stablemode must be enabled for deterministic results")
 
     Th: t.List[float] = Field(
         [10, 4],
