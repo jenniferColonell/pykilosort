@@ -19,8 +19,8 @@ class KilosortParams(BaseModel):
         0.1, description="minimum firing rate on a 'good' channel (0 to skip)"
     )
 
-    stablemode_enabled: bool = Field(False, description="make output more stable")
-    deterministicmode_enabled: bool = Field(False, description="make output deterministic by sorting spikes before applying kernels")
+    stablemode_enabled: bool = Field(True, description="make output more stable")
+    deterministicmode_enabled: bool = Field(True, description="make output deterministic by sorting spikes before applying kernels")
 
     @validator("deterministicmode_enabled")
     def validate_deterministicmode(v, values):
