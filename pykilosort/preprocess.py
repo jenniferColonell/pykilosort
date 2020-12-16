@@ -196,10 +196,13 @@ def whiteningLocal(CC, yc, xc, nRange):
 
     for j in range(CC.shape[0]):
         ds = (xc - xc[j]) ** 2 + (yc - yc[j]) ** 2
-        ilocal = np.argsort(ds)
+        #ilocal = np.argsort(ds)
         # take the closest channels to the primary channel.
         # First channel in this list will always be the primary channel.
-        ilocal = ilocal[:nRange]
+        #ilocal = ilocal[:nRange]
+
+        ilocal = np.lexsort((np.arange(len(ds)), ds))[:nRange]
+        # using lexsort to match Matlab default behaviour
 
         wrot0 = cp.asnumpy(whiteningFromCovariance(CC[np.ix_(ilocal, ilocal)]))
         # the first column of wrot0 is the whitening filter for the primary channel
@@ -235,7 +238,7 @@ def get_whitening_matrix(raw_data=None, probe=None, params=None, nSkipCov=None):
     for ibatch in tqdm(range(0, Nbatch, nSkipCov), desc="Computing the whitening matrix"):
         i = max(0, (NT - ntbuff) * ibatch - 2 * ntbuff)
         # WARNING: we no longer use Fortran order, so raw_data is nsamples x NchanTOT
-        buff = raw_data[i:i + NT - ntbuff]
+        buff = raw_data[i:i + NTbuff]
         assert buff.shape[0] > buff.shape[1]
         assert buff.flags.c_contiguous
 
@@ -244,10 +247,14 @@ def get_whitening_matrix(raw_data=None, probe=None, params=None, nSkipCov=None):
             buff = np.concatenate(
                 (buff, np.tile(buff[nsampcurr - 1], (NTbuff, 1))), axis=0)
 
-        buff_g = cp.asarray(buff, dtype=np.float32)
+        # buff_g = cp.asarray(buff, dtype=np.float32)
+        #
+        # # apply filters and median subtraction
+        # datr = gpufilter(buff_g, fs=fs, fshigh=fshigh, chanMap=chanMap)
 
-        # apply filters and median subtraction
-        datr = gpufilter(buff_g, fs=fs, fshigh=fshigh, chanMap=chanMap)
+        buff_c = np.array(buff, dtype=np.float32)
+        datr_c = cpufilter(buff_c, fs=fs, fshigh=fshigh, chanMap=chanMap)
+        datr = cp.asarray(datr_c, dtype=np.float32)
         assert datr.flags.c_contiguous
 
         CC = CC + cp.dot(datr.T, datr) / NT  # sample covariance
@@ -409,12 +416,16 @@ def preprocess(ctx):
             nsampcurr = buff.shape[0]  # how many time samples the current batch has
             if nsampcurr < NTbuff:
                 buff = np.concatenate(
-                    (buff, np.tile(buff[nsampcurr - 1], (NTbuff, 1))), axis=0)
+                    (buff, np.tile(buff[nsampcurr - 1], (NTbuff - nsampcurr, 1))), axis=0)
 
             # apply filters and median subtraction
-            buff = cp.asarray(buff, dtype=np.float32)
+            # buff = cp.asarray(buff, dtype=np.float32)
+            #
+            # datr = gpufilter(buff, chanMap=probe.chanMap, fs=fs, fshigh=fshigh, fslow=fslow)
 
-            datr = gpufilter(buff, chanMap=probe.chanMap, fs=fs, fshigh=fshigh, fslow=fslow)
+            buff_c = np.array(buff, dtype=np.float32)
+            datr_c = cpufilter(buff_c, chanMap=probe.chanMap, fs=fs, fshigh=fshigh, fslow=fslow)
+            datr = cp.asarray(datr_c, dtype=np.float32)
             assert datr.flags.c_contiguous
 
             datr = datr[ioffset:ioffset + NT, :]  # remove timepoints used as buffers
