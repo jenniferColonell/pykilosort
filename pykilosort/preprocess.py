@@ -248,13 +248,13 @@ def get_whitening_matrix(raw_data=None, probe=None, params=None, nSkipCov=None):
             buff = np.concatenate(
                 (buff, np.tile(buff[nsampcurr - 1], (NTbuff, 1))), axis=0)
 
-        # buff_g = cp.asarray(buff, dtype=np.float32)
-        buff_c = np.array(buff, dtype=np.float32)
+        buff_g = cp.asarray(buff, dtype=np.float32)
+        # buff_c = np.array(buff, dtype=np.float32)
 
         # apply filters and median subtraction
-        # datr = gpufilter(buff_g, fs=fs, fshigh=fshigh, chanMap=chanMap)
-        datr_c = cpufilter(buff_c, fs=fs, fshigh=fshigh, chanMap=chanMap)
-        datr = cp.array(datr_c)
+        datr = gpufilter(buff_g, fs=fs, fshigh=fshigh, chanMap=chanMap)
+        # datr_c = cpufilter(buff_c, fs=fs, fshigh=fshigh, chanMap=chanMap)
+        # datr = cp.array(datr_c)
         assert datr.flags.c_contiguous
 
         CC = CC + cp.dot(datr.T, datr) / NT  # sample covariance
@@ -429,13 +429,13 @@ def preprocess(ctx):
                 buff = np.concatenate((bpad, buff[:NTbuff - ntb]), axis=0)
 
             # apply filters and median subtraction
-            #buff = cp.asarray(buff, dtype=np.float32)
+            buff = cp.asarray(buff, dtype=np.float32)
 
-            #datr = gpufilter(buff, chanMap=probe.chanMap, fs=fs, fshigh=fshigh, fslow=fslow)
+            datr = gpufilter(buff, chanMap=probe.chanMap, fs=fs, fshigh=fshigh, fslow=fslow)
 
-            buff_c = np.array(buff, dtype=np.float32)
-            datr_c = cpufilter(buff_c, chanMap=probe.chanMap, fs=fs, fshigh=fshigh, fslow=fslow)
-            datr = cp.asarray(datr_c, dtype=np.float32)
+            # buff_c = np.array(buff, dtype=np.float32)
+            # datr_c = cpufilter(buff_c, chanMap=probe.chanMap, fs=fs, fshigh=fshigh, fslow=fslow)
+            # datr = cp.asarray(datr_c, dtype=np.float32)
             assert datr.flags.c_contiguous
 
             datr[ntb:2*ntb] = w_edge * datr[ntb:2*ntb] + (1 - w_edge) * datr_prev
