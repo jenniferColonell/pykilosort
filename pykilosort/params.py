@@ -182,7 +182,6 @@ class KilosortParams(BaseModel):
 
     nt0: int = 61
     nup: int = 10
-    sig: int = 1
     gain: int = 1
 
     templateScaling: float = 20.0

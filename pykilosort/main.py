@@ -8,7 +8,7 @@ from pprint import pprint
 from pydantic import BaseModel
 
 from .preprocess import preprocess, get_good_channels, get_whitening_matrix, get_Nbatch
-from .cluster import clusterSingleBatches
+from .datashift2 import datashift2
 from .learn import learnAndSolve8b
 from .postprocess import find_merges, splitAllClusters, set_cutoff, rezToPhy
 from .utils import Bunch, Context, memmap_large_array, load_probe, copy_bunch
@@ -136,19 +136,19 @@ def run(
     assert ir.proc_path.exists()
     ir.proc = np.memmap(ir.proc_path, dtype=raw_data.dtype, mode="r", order="F")
 
-    # # -------------------------------------------------------------------------
-    # # Time-reordering as a function of drift.
-    # #
-    # # This function saves:
-    # #
-    # #       iorig, ccb0, ccbsort
-    # #
-    # if "iorig" not in ir:
-    #     with ctx.time("reorder"):
-    #         out = clusterSingleBatches(ctx)
-    #     ctx.save(**out)
-    # if stop_after == "reorder":
-    #     return ctx
+    # -------------------------------------------------------------------------
+    # Time-reordering as a function of drift.
+    #
+    # This function saves:
+    #
+    #       iorig, ccb0, ccbsort
+    #
+    if "iorig" not in ir:
+        with ctx.time("drift correction"):
+            out = datashift2(ctx)
+        ctx.save(**out)
+    if stop_after == "drift_correction":
+        return ctx
 
     # -------------------------------------------------------------------------
     #  Main tracking and template matching algorithm.
