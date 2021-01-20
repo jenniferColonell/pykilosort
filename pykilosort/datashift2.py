@@ -468,6 +468,57 @@ def standalone_detector(wTEMP, wPCA, NrankPC, yup, xup, Nbatch, proc, probe, par
     return st3[:nsp]
 
 
+def get_drift(spike_times, spike_depths, spike_amps, spike_batches, probe,
+              nblocks=5, genericSpkTh = 10):
+
+    ymin = min(probe.yc)
+
+    # binning width across Y (um)
+    dd = 5
+
+    # min and max for the range of depths
+    dmin = ymin
+
+    dmax = int(1 + np.ceil(max(spike_depths) / dd))
+    Nbatches = int(np.max(spike_batches + 1))
+
+
+    # preallocate matrix of counts with 20 bins, spaced logarithmically
+    F = np.zeros((dmax, 20, Nbatches))
+    for t in range(Nbatches):
+        # find spikes in this batch
+        ix = np.where(spike_batches == t)[0]
+
+        # subtract offset
+        spike_depths_batch = spike_depths[ix] - dmin
+
+        # amplitude bin relative to the minimum possible value
+        amp = np.log10(np.clip(spike_amps[ix], None, 99)) - np.log10(genericSpkTh)
+        # normalization by maximum possible value
+        amp = amp / (np.log10(100) - np.log10(genericSpkTh))
+
+        # multiply by 20 to distribute a [0,1] variable into 20 bins
+        # sparse is very useful here to do this binning quickly
+        i, j, v, m, n = (
+            np.ceil(spike_depths_batch / dd).astype("int"),
+            np.ceil(1e-5 + amp * 20).astype("int"),
+            np.ones((len(ix), 1)),
+            dmax,
+            20,
+        )
+        M = np.zeros((m, n))
+        M[i - 1, j - 1] += 1
+
+        # the counts themselves are taken on a logarithmic scale (some neurons
+        # fire too much!)
+        F[:, :, t] = np.log2(1 + M)
+
+    ysamp = dmin + dd * np.arange(1, dmax) - dd / 2
+    imin, yblk, F0 = align_block2(F, ysamp, nblocks)
+
+    return imin, yblk
+
+
 def datashift2(ctx):
     """
     Main function to re-register the preprocessed data

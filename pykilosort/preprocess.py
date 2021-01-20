@@ -22,6 +22,45 @@ def get_filter_params(fs, fshigh=None, fslow=None):
         return butter(3, fshigh / fs * 2, 'high')
 
 
+def filter_and_whiten(dataRAW, chanMap=None, fs=None, fslow=None, fshigh=None, car=True, wrot=None):
+    # filter this batch of data and whiten after common average referencing with the
+    # median
+    # buff is timepoints by channels
+    # chanMap are indices of the channels to be kep
+    # params.fs and params.fshigh are sampling and high-pass frequencies respectively
+    # if params.fslow is present, it is used as low-pass frequency (discouraged)
+
+    # output should be a cupy array with dimensions matching that of dataRAW
+    # channels in output data should be z-scored and then multipled by scaleproc (default 200)
+
+    assert dataRAW.flags.c_contiguous
+    assert dataRAW.ndim == 2
+    assert dataRAW.shape[0] > dataRAW.shape[1]
+    if chanMap is not None and len(chanMap):
+        dataRAW = dataRAW[:, chanMap]  # subsample only good channels
+    assert dataRAW.ndim == 2
+
+    # subtract the mean from each channel
+    dataRAW = dataRAW - cp.mean(dataRAW, axis=0)  # subtract mean of each channel
+    assert dataRAW.ndim == 2
+
+    # CAR, common average referencing by median
+    if car:
+        # subtract median across channels
+        dataRAW = dataRAW - median(dataRAW, axis=1)[:, np.newaxis]
+
+    # set up the parameters of the filter
+    filter_params = get_filter_params(fs, fshigh=fshigh, fslow=fslow)
+
+    # next four lines should be equivalent to filtfilt (which cannot be
+    # used because it requires float64)
+    datr = lfilter(*filter_params, dataRAW, axis=0)  # causal forward filter
+    datr = lfilter(*filter_params, datr, axis=0, reverse=True)  # backward
+
+    datr = cp.dot(datr, wrot)
+    return datr
+
+
 #TODO: Fix so it matches cpufilter
 def gpufilter(buff, chanMap=None, fs=None, fslow=None, fshigh=None, car=True):
     # filter this batch of data after common average referencing with the
