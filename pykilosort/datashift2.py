@@ -291,6 +291,7 @@ def shift_batch_on_disk2(
     sig,
     Nbatch,
     params,
+    probe,
     proc,
     shifted_fname=None,
     overwrite=False,
@@ -299,7 +300,7 @@ def shift_batch_on_disk2(
 
     # register one batch of a whitened binary file
     NT = params.NT
-    Nchan = params.probe.Nchan
+    Nchan = probe.Nchan
 
     batchstart = range(
         0, params.NT * Nbatch, params.NT
@@ -316,16 +317,16 @@ def shift_batch_on_disk2(
         interpolation_function = Akima1DInterpolator(_ysamp, _shifts_in)
 
         # interpolation_function = interp1d(ysamp, shifts_in, kind='cubic', fill_value=([0],[0])) #'extrapolate')
-        shifts = interpolation_function(params.probe.yc, nu=0, extrapolate="True")
+        shifts = interpolation_function(probe.yc, nu=0, extrapolate="True")
 
 
     # load the batch
-    dat = proc.flat[offset : offset + params.NT * params.probe.Nchan].reshape(
-        (-1, params.probe.Nchan), order="F"
+    dat = proc.flat[offset : offset + params.NT * probe.Nchan].reshape(
+        (-1, probe.Nchan), order="F"
     )  # / params.scaleproc
 
     # 2D coordinates for interpolation
-    xp = np.vstack([params.probe.xc, params.probe.yc]).T
+    xp = np.vstack([probe.xc, probe.yc]).T
 
     # 2D kernel of the original channel positions
     Kxx = kernel2D(xp, xp, sig)
@@ -356,11 +357,11 @@ def shift_batch_on_disk2(
                 ilast = params.NT - params.ntbuff + 1
             dat_cpu[ifirst:ilast, :].tofile(fid2)
 
-    if overwrite:
-        with open(ops.fproc, "wb") as fid:
-            fid.seek(offset_bytes)
-            # normally we want to write the aligned data back to the same file
-            dat_cpu.tofile(fid)  # write this batch to binary file
+    # if overwrite:
+    #     with open(ops.fproc, "wb") as fid:
+    #         fid.seek(offset_bytes)
+    #         # normally we want to write the aligned data back to the same file
+    #         dat_cpu.tofile(fid)  # write this batch to binary file
 
     return dat_cpu, dat, shifts
 
@@ -464,7 +465,7 @@ def standalone_detector(wTEMP, wPCA, NrankPC, yup, xup, Nbatch, proc, probe, par
         nsp = nsp + nsp0
 
         if k % 100 == 0 | k == (Nbatch - 1):
-            print(f"{k+1} batches, {nsp} spikes")
+            logger.info(f"{k+1} batches, {nsp} spikes")
     return st3[:nsp]
 
 
@@ -540,7 +541,7 @@ def datashift2(ctx):
     # Determine the average vertical spacing between channels.
     # Usually all the vertical spacings are the same, i.e. on Neuropixels probes.
     dmin = np.median(np.diff(np.unique(ir.yc)))
-    print(f"pitch is {dmin} um\n")
+    logger.info(f"pitch is {dmin} um\n")
     yup = np.arange(
         start=ymin, step=dmin / 2, stop=ymax + (dmin / 2)
     )  # centers of the upsampled y positions
@@ -627,6 +628,7 @@ def datashift2(ctx):
     #         params.sig,
     #         Nbatches,
     #         params,
+    #         probe,
     #         ir.proc,
     #         shifted_fname=params.output_filename,
     #         overwrite=params.overwrite,

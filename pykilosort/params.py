@@ -91,10 +91,6 @@ class KilosortParams(BaseModel):
     genericSpkTh: float = Field(
         10.0, description="threshold for crossings with generic templates"
     )
-    nblocks: int = Field(
-        1,
-        description="number of blocks used to segment the probe when tracking drift, 0 == don't track, 1 == rigid, > 1 == non-rigid",
-    )
 
     datashift: t.Optional[DatashiftParams] = Field(
         None, description="parameters for 'datashift' drift correction. not required"
