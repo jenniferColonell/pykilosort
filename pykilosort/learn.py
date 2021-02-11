@@ -930,12 +930,12 @@ def learnAndSolve8b(ctx):
             ir.UA = np.zeros((Nchan, Nfilt, Nrank, nBatches), dtype=np.float32, order='F')
             ir.muA = np.zeros((Nfilt, nBatches), dtype=np.float32, order='F')
 
-        if ibatch % 100 == 0:
-            # this is some of the relevant diagnostic information to be printed during training
-            logger.info(
-                ('%d / %d batches, %d units, nspks: %2.4f, mu: %2.4f, '
-                    'nst0: %d, merges: %2.4f, %2.4f'),
-                ibatch, niter, Nfilt, nsp.sum(), median(mu), st0.size, *ndrop)
+        # if ibatch % 100 == 0:
+        #     # this is some of the relevant diagnostic information to be printed during training
+        #     logger.info(
+        #         ('%d / %d batches, %d units, nspks: %2.4f, mu: %2.4f, '
+        #             'nst0: %d, merges: %2.4f, %2.4f'),
+        #         ibatch, niter, Nfilt, nsp.sum(), median(mu), st0.size, *ndrop)
 
         free_gpu_memory()
 
