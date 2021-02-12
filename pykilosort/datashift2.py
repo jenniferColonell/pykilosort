@@ -14,12 +14,39 @@ from scipy.interpolate import Akima1DInterpolator
 
 from .postprocess import my_conv2_cpu
 from .cptools import ones, svdecon, var, mean, free_gpu_memory
-from .cluster import getClosestChannels2
 from .learn import extractTemplatesfromSnippets
 from .preprocess import convolve_gpu, _is_vect, _make_vect
 from .utils import get_cuda, Bunch
 
 logger = logging.getLogger(__name__)
+
+
+def getClosestChannels2(ycup, xcup, yc, xc, NchanClosest):
+    # this function outputs the closest channels to each channel,
+    # as well as a Gaussian-decaying mask as a function of pairwise distances
+    # sigma is the standard deviation of this Gaussian-mask
+    # compute distances between all pairs of channels
+    xc = cp.asarray(xc, dtype=np.float32, order='F')
+    yc = cp.asarray(yc, dtype=np.float32, order='F')
+    xcup = cp.asarray(xcup, dtype=np.float32, order='F')
+    ycup = cp.asarray(ycup, dtype=np.float32, order='F')
+    C2C = ((xc[:, np.newaxis] - xcup[:].T.flatten()[:, np.newaxis].T) ** 2 + (
+                yc[:, np.newaxis] - ycup[:].T.flatten()[:, np.newaxis].T) ** 2)
+    C2C = cp.sqrt(C2C)
+    Nchan, NchanUp = C2C.shape
+
+    # sort distances
+    isort = cp.argsort(C2C, axis=0)
+
+    # take NchanCLosest neighbors for each primary channel
+    iC = isort[:NchanClosest, :]
+
+    # in some cases we want a mask that decays as a function of distance between pairs of channels
+    # this is an awkward indexing to get the corresponding distances
+    ix = iC + cp.arange(0, Nchan * NchanUp, Nchan)
+    dist = C2C.T.ravel()[ix]
+
+    return iC, dist
 
 
 def get_batch(params, probe, ibatch, Nbatch, proc) -> cp.ndarray:
