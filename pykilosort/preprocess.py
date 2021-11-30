@@ -191,32 +191,76 @@ def get_whitening_matrix(raw_data=None, probe=None, params=None, nSkipCov=None):
     Nchan = probe.Nchan
 
     # Nchan is obtained after the bad channels have been removed
-    CC = cp.zeros((Nchan, Nchan))
+    CC = cp.zeros((len(range(2, Nbatch, nSkipCov)), Nchan, Nchan))
+    # CC_ = cp.zeros((len(range(2, Nbatch, nSkipCov)), Nchan, Nchan))
 
-    for ibatch in tqdm(range(0, Nbatch, nSkipCov), desc="Computing the whitening matrix"):
+    for icc, ibatch in enumerate(tqdm(range(2, Nbatch, nSkipCov), desc="Computing the whitening matrix")):
         i = max(0, (NT - ntbuff) * ibatch - 2 * ntbuff)
         # WARNING: we no longer use Fortran order, so raw_data is nsamples x NchanTOT
         buff = raw_data[i:i + NT - ntbuff]
         assert buff.shape[0] > buff.shape[1]
         assert buff.flags.c_contiguous
         nsampcurr = buff.shape[0]
-        if nsampcurr < NTbuff:
+        if nsampcurr < (NT - ntbuff):  # if nsampcurr < NTbuff:
             buff = np.concatenate(
                 (buff, np.tile(buff[nsampcurr - 1], (NTbuff, 1))), axis=0)
+        if params.preprocessing_function == 'destriping':
+            """we want to run the whitening on the destriped data, but the channels selection
+            requires physical units (V) so perform the sample to V conversion and back"""
+            from ibllib.dsp.voltage import destripe, detect_bad_channels, interpolate_bad_channels
+            from ibllib.io import spikeglx
+            bin_file = _file_paths(raw_data)
+            bin_file = bin_file[0] if isinstance(bin_file, list) else bin_file
+            sr = spikeglx.Reader(bin_file)
+            buff_volts = buff[:int(NTbuff / 2), :chanMap.size].astype(np.float32)
+            buff_volts *= sr.channel_conversion_sample2v['ap'][:chanMap.size].astype(np.float32)
+            channel_labels, _ = detect_bad_channels(buff_volts.T, fs=fs)
+            # channel_labels, _ = detect_bad_channels(x, fs)
+            datrn = destripe(buff_volts.T, fs=fs, channel_labels=channel_labels,
+                             butter_kwargs={'N': 3, 'Wn': fshigh / fs * 2, 'btype': 'highpass'})
+            datrn = np.ascontiguousarray(datrn.astype(np.float32).T) / sr.channel_conversion_sample2v['ap'][:chanMap.size]
+            datr = cp.asarray(datrn[1024:-1024, :].astype(np.float32))
 
-        if False and params.preprocessing_function == 'destriping':
-            from ibllib.dsp.voltage import destripe
-            datr = destripe(buff[:, :chanMap.size].T, fs=fs, channel_labels=True,
-                            butter_kwargs={'N': 3, 'Wn': fshigh / fs * 2, 'btype': 'highpass'})
-            datr = cp.asarray(datr.T)
+            # interpolated channels are just z-scored
+            CC[icc, :, :] = cp.dot(datr.T, datr) / datr.shape[0]
+            iko = np.where(np.logical_or(channel_labels == 1, channel_labels == 2))[0]
+            CC[icc, iko, :] = 0
+            CC[icc, :, iko] = 0
+            CC[icc, iko, iko] = cp.diag(cp.dot(datr[:, iko].T, datr[:, iko]) / datr.shape[0])
+            # we remove channels outside of the brain from the covariance and set them to a low level
+            ilast = np.where(channel_labels < 3)[0][-1] + 1
+            CC[icc, ilast:, :] = 0
+            CC[icc, :, ilast:] = 0
+            CC[icc, ilast:, ilast:] = cp.eye(CC.shape[1] - ilast)
+            # from easyqc.gui import viewseis
+            # from ibllib.dsp import rms
+            # import matplotlib.pyplot as plt
+            # eqc = viewseis(datrn, si=1 / 30, taxis=0, title='dest')
+            #
+            # # apply filters and median subtraction
+            # buff_g = cp.asarray(buff, dtype=np.float32)
+            # datr_ = gpufilter(buff_g, fs=fs, fshigh=fshigh, chanMap=chanMap)
+            # CC_[icc, :, :] = cp.dot(datr_.T, datr_) / datr_.shape[0]
+            # eqc_ = viewseis(datr_.T.get().T, si=1 / 30, taxis=0, title='gpu')
+
+            # Wrot = whiteningLocal(cp.median(CC, axis=0), yc, xc, whiteningRange)
+            # Wrot_ = whiteningLocal(cp.median(CC_, axis=0), yc, xc, whiteningRange)
+            # _, ax = plt.subplots(2, 2, sharex=True, sharey=True)
+            # ax[0, 0].imshow(cp.median(CC_, axis=0).get(), aspect='auto', vmin=-20, vmax=20)
+            # ax[1, 0].imshow(cp.median(CC, axis=0).get(), aspect='auto', vmin=-20, vmax=20)
+            # ax[0, 1].imshow(Wrot_.get(), aspect='auto', vmin=-.5, vmax=.5)
+            # ax[1, 1].imshow(Wrot.get(), aspect='auto', vmin=-.5, vmax=.5)
         else:
             buff_g = cp.asarray(buff, dtype=np.float32)
             # apply filters and median subtraction
             datr = gpufilter(buff_g, fs=fs, fshigh=fshigh, chanMap=chanMap)
-        assert datr.flags.c_contiguous
-        CC = CC + cp.dot(datr.T, datr) / NT  # sample covariance
+            # eqc = viewseis(cp.asnumpy(datr), si=1 / 30, taxis=0, title='raw')
+            assert datr.flags.c_contiguous
+            CC[icc, :, :] = cp.dot(datr.T, datr) / datr.shape[0]
+    CC = cp.median(CC, axis=0)
 
-    CC = CC / max(ceil((Nbatch - 1) / nSkipCov), 1)
+    if params.preprocessing_function == 'destriping':
+        return cp.eye(CC.shape[0]) * cp.median(1 / cp.diag(CC)) * scaleproc
 
     if params.do_whitening:
         if whiteningRange < np.inf:
@@ -233,9 +277,14 @@ def get_whitening_matrix(raw_data=None, probe=None, params=None, nSkipCov=None):
         Wrot = cp.diag(cp.diag(CC) ** (-0.5))
 
     Wrot = Wrot * scaleproc
+    conditioning = np.linalg.cond(cp.asnumpy(Wrot))
 
-    logger.info("Computed the whitening matrix.")
+    import matplotlib.pyplot as plt
+    plt.plot(cp.diag(Wrot).get())
 
+    logger.info(f"Computed the whitening matrix. Cond = {conditioning}")
+    # import matplotlib.pyplot as plt
+    # plt.plot(np.diag(cp.asnumpy(Wrot))[:-1])
     return Wrot
 
 
@@ -326,6 +375,18 @@ def get_Nbatch(raw_data, params):
     # we assume raw_data as been already virtually split with the requested trange
     return ceil(n_samples / params.NT)  # number of data batches
 
+def _file_paths(raw_data):
+    """Helper to get the file paths from the raw data loader"""
+    input_file = []
+    if isinstance(raw_data.raw_data, list):
+        for i, rd in enumerate(raw_data.raw_data):
+            input_file.append(rd.name)
+    elif getattr(raw_data.raw_data, '_paths', None):
+        for i, bin_file in enumerate(raw_data.raw_data._paths):
+            input_file.append(bin_file)
+    else:
+        input_file = raw_data.raw_data.name
+    return input_file
 
 def destriping(ctx):
     """IBL destriping - multiprocessing CPU version for the time being, although leveraging the GPU
@@ -351,7 +412,7 @@ def destriping(ctx):
                 ns2add = ceil(raw_data.n_samples[-1] / ctx.params.NT) * ctx.params.NT - raw_data.n_samples[-1]
             else:
                 ns2add = 0
-            decompress_destripe_cbin(rd.name, ns2add=ns2add, append=i > 0)
+            decompress_destripe_cbin(rd.name, ns2add=ns2add, append=i > 0, **kwargs)
     elif getattr(raw_data.raw_data, '_paths', None):
         nstot = 0
         for i, bin_file in enumerate(raw_data.raw_data._paths):
@@ -362,7 +423,6 @@ def destriping(ctx):
             else:
                 ns2add = 0
             decompress_destripe_cbin(bin_file, append=i > 0, ns2add=ns2add, **kwargs)
-
     else:
         assert raw_data.raw_data.n_parts == 1
         ns2add = ceil(raw_data.n_samples / ctx.params.NT) * ctx.params.NT - raw_data.n_samples

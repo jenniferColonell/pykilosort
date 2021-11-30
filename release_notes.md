@@ -1,5 +1,7 @@
 # 1.2
-## 1.2.1
+
+## 1.2.2
+-   add conditioning of whitening matrix in the log
 -   IBL pre-proc: add the channel removal code to the computing of the whitening matrix 
 
 ## 1.2.0 alpha02
