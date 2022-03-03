@@ -222,10 +222,11 @@ def initializeWdata2(call, uprojDAT, Nchan, nPCs, Nfilt, iC):
     # pick random spikes from the sample
     # WARNING: replace ceil by floor because this is a random index, and 0/1 indexing
     # discrepancy between Python and MATLAB.
-    irand = np.floor(np.random.rand(Nfilt) * uprojDAT.shape[1]).astype(np.int32)
-
+    # intialize random number generator with CSBSeed
+    
+    irand = np.floor(np.random.rand(Nfilt) * uprojDAT.shape[1]).astype(np.int32) 
     W = cp.zeros((nPCs, Nchan, Nfilt), dtype=np.float32)
-
+    
     for t in range(Nfilt):
         ich = iC[:, call[irand[t]]]  # the channels on which this spike lives
         # for each selected spike, get its features
@@ -375,10 +376,12 @@ def mexClustering2(Params, uproj, W, mu, call, iMatch, iC):
     bestFilter = cp.RawKernel(code, 'bestFilter')
     bestFilter((40,), (256,), (d_Params, d_iMatch, d_iC, d_call, d_cmax, d_id, d_x))
 
-    # average all spikes for same template -- ORIGINAL
+    # average all spikes for same template -- threaded over filters, but not features
+    # avoid collision when adding to elements of d_dWU
     average_snips_v2 = cp.RawKernel(code, 'average_snips_v2')
     average_snips_v2(
-        (Nfilters,), (NrankPC, NchanNear), (d_Params, d_iC, d_call, d_id, d_uproj, d_cmax, d_dWU))
+        (Nfilters,), (1,), (d_Params, d_iC, d_call, d_id, d_uproj, d_cmax, d_dWU))
+    #    (Nfilters,), (NrankPC, NchanNear), (d_Params, d_iC, d_call, d_id, d_uproj, d_cmax, d_dWU))
 
     count_spikes = cp.RawKernel(code, 'count_spikes')
     count_spikes((7,), (256,), (d_Params, d_id, d_nsp, d_x, d_V))
@@ -434,7 +437,6 @@ def clusterSingleBatches(ctx, sanity_plots=False, plot_widgets=None, plot_pos=0)
     Nbatch = ctx.intermediate.Nbatch
     params = ctx.params
     probe = ctx.probe
-    raw_data = ctx.raw_data
     ir = ctx.intermediate
     proc = ir.proc
 
@@ -442,6 +444,11 @@ def clusterSingleBatches(ctx, sanity_plots=False, plot_widgets=None, plot_pos=0)
         # if reordering is turned off, return consecutive order
         iorig = np.arange(Nbatch)
         return iorig, None, None
+    
+    # intialize the random number generator with seed.
+    # Ensures a reproducible sequence when random spikes are drawn in initializeW2data
+    # Note that random number generator is re-intialized in learn
+    np.random.seed(params.seed)
 
     nPCs = params.nPCs
     Nfilt = ceil(probe.Nchan / 2)
@@ -472,6 +479,8 @@ def clusterSingleBatches(ctx, sanity_plots=False, plot_widgets=None, plot_pos=0)
 
     # return an array of closest channels for each channel
     iC = getClosestChannels(probe, params.sigmaMask, NchanNear)[0]
+    
+
 
     for ibatch in tqdm(range(nBatches), desc="Clustering spikes"):
         enough_spikes = False

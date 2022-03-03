@@ -71,10 +71,14 @@ class KilosortParams(BaseModel):
     
     save_drift_spike_detections: bool = Field(False, description='save detected spikes in drift correction')
     
+    ks2_mode: bool = Field(False, description='Use ClusterSingleBatches and reorder')
+    
     perform_drift_registration: bool = Field(True, description='Estimate electrode drift and apply registration')
 
     do_whitening: bool = Field(True, description='whether or not to whiten data, if disabled \
                                                  channels are individually z-scored')
+    
+    car: bool = Field(True, description='set to True to perform common average referencing (median subtraction)')
 
     fs: float = Field(30000.0, description="sample rate")
 
@@ -88,7 +92,7 @@ class KilosortParams(BaseModel):
         True, description="keep temporary files created while running"
     )
 
-    fshigh: float = Field(300.0, description="high pass filter frequency")
+    fshigh: t.Optional[float] = Field(300.0, description="high pass filter frequency")
     fslow: t.Optional[float] = Field(None, description="low pass filter frequency")
     minfr_goodchannels: float = Field(
         0.1, description="minimum firing rate on a 'good' channel (0 to skip)"

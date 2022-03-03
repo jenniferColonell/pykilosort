@@ -835,7 +835,7 @@ def learnAndSolve8b(ctx, sanity_plots=False, plot_widgets=None, plot_pos=None):
     ir = ctx.intermediate
     data_loader = ir.data_loader
 
-    iorig = ir.iorig
+    iorig = cp.asnumpy(ir.iorig)
 
     # TODO: move_to_config
     NrankPC = 6  # this one is the rank of the PCs, used to detect spikes with threshold crossings
@@ -873,11 +873,33 @@ def learnAndSolve8b(ctx, sanity_plots=False, plot_widgets=None, plot_pos=None):
     # find the closest NchanNear channels, and the masks for those channels
     iC, mask, C2C = getClosestChannels(probe, sigmaMask, NchanNear)
 
-    # batch order schedule is a random permutation of all batches
-    ischedule = np.random.permutation(nBatches)
-    i1 = np.arange(nBatches)
-
-    irounds = np.concatenate((ischedule, i1))
+    if params.reorder:
+        # for KS2.0 like sorting: run batches in first half of recording 
+        # From Marius' comments in the release version of KS2.0:
+        # we learn the templates by going back and forth through some of the data,
+        # in the order specified by iorig (determined by batch reordering).
+        # standard order -- learn templates from first half of data starting
+        # from midpoint, counting down to 1, and then returning.
+              
+        ihalf = np.ceil(nBatches/2).astype(int)
+        first_half = iorig[0:ihalf]
+        first_half_inv = first_half[::-1]   #invert order, start from midpoint
+        learn_order = np.concatenate((first_half_inv, first_half))
+        
+        # In the run templates iterations, start from the ihalf-1 batch and work
+        # to batch 0, then run ihalf to end
+        second_half = iorig[ihalf:]
+        run_order = np.concatenate((first_half_inv, second_half))        
+        irounds = np.concatenate((learn_order, run_order))
+        
+    else:
+        # For KS 2.5-like behavior, "learn" phase uses batches in random order
+        # "Run" phase uses batches in time order.
+        # Batch order schedule is a random permutation of all batches
+        ischedule = np.random.permutation(nBatches)
+        i1 = np.arange(nBatches)
+        irounds = np.concatenate((ischedule, i1))
+    
 
     niter = irounds.size
 
@@ -1240,6 +1262,20 @@ def learnAndSolve8b(ctx, sanity_plots=False, plot_widgets=None, plot_pos=None):
         free_gpu_memory()
 
     # Close the large array writers and save the JSON metadata files to disk.
+    
+    if params.reorder:
+        # For KS 2.0 like processing, want to sort the output arrays in order
+        # of similarity to avoid excess splitting in SplitAllClusters
+        # spikes get sorted by absolute time in rezToPhy
+        # python lexsort sorts the columns with the primary sort column last
+        st3c = np.concatenate(st3,axis=0)
+        sort_order_batch = np.argsort(run_order)
+        batch_ind = st3c[:,4].astype(int)
+        sort_order = sort_order_batch[batch_ind]
+        simOrder = np.lexsort((st3c[:,3],st3c[:,2],st3c[:,1],st3c[:,0],sort_order))
+        ir.simOrder = simOrder   #for accessing the feature arrays
+
+        
     fW.close()
     fWpc.close()
 
@@ -1278,6 +1314,7 @@ def learnAndSolve8b(ctx, sanity_plots=False, plot_widgets=None, plot_pos=None):
     # Save cluster times and IDs at this stage if requested
     if params.save_temp_files:
         np.save(ctx.context_path / 'temp_splits' / 'st3_learn.npy', ir.st3)
+        np.save(ctx.context_path / 'temp_splits' / 'simOrder_learn.npy', ir.simOrder)
 
     # # this whole next block is just done to compress the compressed templates
     # # we separately svd the time components of each template, and the spatial components
@@ -1325,6 +1362,7 @@ def learnAndSolve8b(ctx, sanity_plots=False, plot_widgets=None, plot_pos=None):
         U=ir.U,
         dWU=ir.dWU,
         mu=ir.mu,
+        simOrder=ir.simOrder
         # W_a=W_a,
         # W_b=W_b,
         # U_a=U_a,

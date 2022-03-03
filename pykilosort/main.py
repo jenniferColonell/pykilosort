@@ -49,6 +49,7 @@ def run(
     params = KilosortParams(**params or {})
     assert params
 
+    print(dat_path)
     raw_data = RawDataLoader(dat_path, **params.ephys_reader_args)
 
     # Get probe.
@@ -140,6 +141,8 @@ def run(
     ir.proc_path = ctx.path("proc", ".dat")
     if "preprocess" not in ctx.timer.keys():
         # Do not preprocess again if the proc.dat file already exists.
+        # set params.preprocessing_function = 'destriping' for ibl preprocessing
+        # set to 'kilosort2' for standard preprocessing 
         with ctx.time("preprocess"):
             if params.preprocessing_function == 'destriping':
                 destriping(ctx)
@@ -154,30 +157,41 @@ def run(
     ir.proc = np.memmap(ir.proc_path, dtype=raw_data.dtype, mode="r+", order="F")
     ir.data_loader = DataLoader(ir.proc_path, params.NT, probe.Nchan, params.scaleproc)
 
-    # -------------------------------------------------------------------------
-    # # Time-reordering as a function of drift.
-    # #
-    # # This function saves:
-    # #
-    # #       iorig, ccb0, ccbsort
-    # #
-    # if "iorig" not in ir:
-    #     with ctx.time("reorder"):
-    #         out = clusterSingleBatches(ctx)
-    #     ctx.save(**out)
-    # if stop_after == "reorder":
-    #     return ctx
-
-
-    if params.perform_drift_registration:
-        if "drift_correction" not in ctx.timer.keys():
-            with ctx.time("drift_correction"):
-                out = datashift2(ctx)
-            ctx.save(**out)
+     #-------------------------------------------------------------------------
+     # Time-reordering as a function of drift.
+     #
+     # This function saves:
+     #
+     #       iorig, ccb0, ccbsort
+     #
+     
+    if params.ks2_mode:
+        # means we're skipping drift registration
+        # set that parameter in case caller has not
+        print('running ClusterSingleBatches')
+        params.perform_drift_registration = False
+        params.reorder = 1
+        if "iorig" not in ir:
+             with ctx.time("reorder"):
+                 out = clusterSingleBatches(ctx)
+             ctx.save(**out)
+        if stop_after == "reorder":
+             return ctx       
+        print( repr(ctx.intermediate.iorig))
+        
     else:
-        ctx.intermediate.iorig = np.arange(ctx.intermediate.Nbatch)
-    if stop_after == "drift_correction":
-        return ctx
+        if params.perform_drift_registration:
+            if "drift_correction" not in ctx.timer.keys():
+                print('running drift correction')
+                with ctx.time("drift_correction"):
+                    out = datashift2(ctx)
+                ctx.save(**out)
+                print(repr(ctx.intermediate.iorig))
+        else:
+            ctx.intermediate.iorig = np.arange(ctx.intermediate.Nbatch)
+        if stop_after == "drift_correction":
+            return ctx
+    
     # -------------------------------------------------------------------------
     # Main tracking and template matching algorithm.
     #
@@ -205,6 +219,13 @@ def run(
     # Special care for cProj and cProjPC which are memmapped .dat files.
     ir.cProj = memmap_large_array(ctx.path("fW", ext=".dat")).T
     ir.cProjPC = memmap_large_array(ctx.path("fWpc", ext=".dat")).T  # transpose
+    
+    if params.ks2_mode:
+        # reorder by simBatches 
+        ir.st3 = ir.st3[ir.simOrder,:]
+        ir.cProj = ir.cProj[ir.simOrder,:]
+        ir.cProjPC = ir.cProjPC[ir.simOrder,:]
+
 
     # -------------------------------------------------------------------------
     # Final merges.

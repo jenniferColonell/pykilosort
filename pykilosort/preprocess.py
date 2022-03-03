@@ -13,12 +13,19 @@ logger = logging.getLogger(__name__)
 
 
 def get_filter_params(fs, fshigh=None, fslow=None):
-    if fslow and fslow < fs / 2:
+    if fslow and fslow > fs/2:    # can't apply a filter with freq > 1/2 sample rate
+        fslow = None
+        
+    if fslow and fshigh:
+        # valid low and high pass values, make a bandpass filter
         # butterworth filter with only 3 nodes (otherwise it's unstable for float32)
         return butter(3, (2 * fshigh / fs, 2 * fslow / fs), 'bandpass')
+    elif fslow:
+         # low pass butterworth
+        return butter(3, 2 * fslow / fs , 'low')        
     else:
-        # butterworth filter with only 3 nodes (otherwise it's unstable for float32)
-        return butter(3, fshigh / fs * 2, 'high')
+        # high pass butterworth
+        return butter(3, 2 * fshigh / fs, 'high')
 
 
 def gpufilter(buff, chanMap=None, fs=None, fslow=None, fshigh=None, car=True):
@@ -45,14 +52,18 @@ def gpufilter(buff, chanMap=None, fs=None, fslow=None, fshigh=None, car=True):
     if car:
         # subtract median across channels
         dataRAW = dataRAW - median(dataRAW, axis=1)[:, np.newaxis]
-
-    # set up the parameters of the filter
-    filter_params = get_filter_params(fs, fshigh=fshigh, fslow=fslow)
-
-    # next four lines should be equivalent to filtfilt (which cannot be
-    # used because it requires float64)
-    datr = lfilter(*filter_params, dataRAW, axis=0)  # causal forward filter
-    datr = lfilter(*filter_params, datr, axis=0, reverse=True)  # backward
+    
+    if (fshigh is not None) or (fslow is not None):
+        # set up the parameters of the filter
+        filter_params = get_filter_params(fs, fshigh=fshigh, fslow=fslow)
+    
+        # next four lines should be equivalent to filtfilt (which cannot be
+        # used because it requires float64)
+        datr = lfilter(*filter_params, dataRAW, axis=0)  # causal forward filter
+        datr = lfilter(*filter_params, datr, axis=0, reverse=True)  # backward
+    else:
+        datr = dataRAW
+        
     return datr
 
 
@@ -404,6 +415,10 @@ def preprocess(ctx):
 
     with open(ir.proc_path, 'wb') as fw:  # open for writing processed data
         for ibatch in tqdm(range(Nbatch), desc="Preprocessing"):
+            # JIC notes
+            # This routine is working with a phylib flatEphysReader object, which
+            # is addressed by time point (rather than indexing into the raw binary)
+            # This is the 'KS2.5-like' processed data file 
             # we'll create a binary file of batches of NT samples, which overlap consecutively
             # on params.ntbuff samples
             # in addition to that, we'll read another params.ntbuff samples from before and after,
@@ -429,7 +444,7 @@ def preprocess(ctx):
             # apply filters and median subtraction
             buff = cp.asarray(buff, dtype=np.float32)
 
-            datr = gpufilter(buff, chanMap=probe.chanMap, fs=fs, fshigh=fshigh, fslow=fslow)
+            datr = gpufilter(buff, chanMap=probe.chanMap, fs=fs, fshigh=fshigh, fslow=fslow, car=params.car)
 
             assert datr.flags.c_contiguous
 
