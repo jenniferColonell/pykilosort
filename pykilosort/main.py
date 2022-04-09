@@ -26,6 +26,7 @@ def run(
     dat_path: str = None,
     dir_path: Path = None,
     output_dir: Path = None,
+    probe_path: str = None,
     probe=None,
     stop_after=None,
     clear_context=False,
@@ -41,9 +42,10 @@ def run(
 
     """
 
-    # Get or create the probe object.
-    if isinstance(probe, (str, Path)):
-        probe = load_probe(probe)
+    # Create probe object from file
+    assert(isinstance(probe_path, (str, Path))),'Probe must be set to a path to a probe definition file'
+           
+    probe = load_probe(probe_path)
 
     # Get params.
     params = KilosortParams(**params or {})
@@ -52,10 +54,11 @@ def run(
     print(dat_path)
     raw_data = RawDataLoader(dat_path, **params.ephys_reader_args)
 
-    # Get probe.
-    probe = probe or default_probe(raw_data)
-    assert probe
+    # Get probe. Removed option for default probe
+    probe = probe 
 
+    assert probe
+    
     # dir path
     if type(dat_path) == list:
         dir_path = dir_path or Path(dat_path[0]).parent
@@ -81,6 +84,10 @@ def run(
     ctx.raw_probe = copy_bunch(probe)
     ctx.raw_data = raw_data
 
+
+    #for i in range(384):
+    #    print(repr(probe.xc[i]) +  ', ' + repr(probe.yc[i]))
+    
     # Load the intermediate results to avoid recomputing things.
     ctx.load()
     # TODO: unclear - what if we have changed something e.g. a parameter? Shouldn't
