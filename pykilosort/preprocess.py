@@ -340,10 +340,13 @@ def get_Nbatch(raw_data, params):
     # tiling just a few samples.
     # if NO filtering is happening, need to avoid padding at the end of the file, because
     # the number of points used in the tiling can be very small
-    if params.fshigh is None and params.fslow is None:
-        return np.floor(n_samples  / params.NT)
+    
+    if params.fshigh is None:
+        Nbatch =  np.floor(n_samples  / params.NT)
     else:
-        return ceil(n_samples / params.NT)  # number of data batches
+        Nbatch = ceil(n_samples / params.NT)  # number of data batches
+    print('Nbatch = ' + repr(Nbatch))
+    return Nbatch
 
 
 def destriping(ctx):

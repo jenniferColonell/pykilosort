@@ -96,6 +96,7 @@ def run(
     ir = ctx.intermediate
 
     ir.Nbatch = get_Nbatch(raw_data, params)
+    ctx.intermediate.Nbatch = ir.Nbatch
 
     # -------------------------------------------------------------------------
     # Find good channels.
