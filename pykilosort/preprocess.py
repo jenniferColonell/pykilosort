@@ -343,9 +343,10 @@ def get_Nbatch(raw_data, params):
     
     if params.fshigh is None:
         Nbatch =  np.floor(n_samples  / params.NT)
+        logger.info("using floor, Nbatch = " + repr(Nbatch))
     else:
         Nbatch = ceil(n_samples / params.NT)  # number of data batches
-    print('Nbatch = ' + repr(Nbatch))
+        logger.info("using ceil, Nbatch = " + repr(Nbatch))    
     return Nbatch
 
 
