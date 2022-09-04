@@ -335,7 +335,15 @@ def get_good_channels(raw_data=None, probe=None, params=None):
 def get_Nbatch(raw_data, params):
     n_samples = max(raw_data.shape)
     # we assume raw_data as been already virtually split with the requested trange
-    return ceil(n_samples / params.NT)  # number of data batches
+    # if the data is to be filtered within pyks, use all the data with padding created
+    # by tiling the data -- filtering will smooth out any weirdness that occurs from
+    # tiling just a few samples.
+    # if NO filtering is happening, need to avoid padding at the end of the file, because
+    # the number of points used in the tiling can be very small
+    if params.fshigh is None and params.fslow is None:
+        return np.floor(n_samples  / params.NT)
+    else:
+        return ceil(n_samples / params.NT)  # number of data batches
 
 
 def destriping(ctx):
@@ -399,6 +407,7 @@ def preprocess(ctx):
     fs = params.fs
     fshigh = params.fshigh
     fslow = params.fslow
+    
     Nbatch = ir.Nbatch
     NT = params.NT
     NTbuff = params.NTbuff
@@ -418,6 +427,9 @@ def preprocess(ctx):
             # JIC notes
             # This routine is working with a phylib flatEphysReader object, which
             # is addressed by time point (rather than indexing into the raw binary)
+            # Note that rather than using zero padding to fill out the final batch
+            # (like KS2) this routine uses the numpy.tile function fill the last
+            # batch with a copy (or copies) of the data in the last batch.
             # This is the 'KS2.5-like' processed data file 
             # we'll create a binary file of batches of NT samples, which overlap consecutively
             # on params.ntbuff samples
