@@ -1,5 +1,5 @@
 import logging
-from math import ceil
+from math import ceil, floor
 from functools import lru_cache
 
 import numpy as np
@@ -342,7 +342,7 @@ def get_Nbatch(raw_data, params):
     # the number of points used in the tiling can be very small
     
     if params.fshigh is None:
-        Nbatch =  np.floor(n_samples  / params.NT)
+        Nbatch =  floor(n_samples  / params.NT)
         logger.info("using floor, Nbatch = " + repr(Nbatch))
     else:
         Nbatch = ceil(n_samples / params.NT)  # number of data batches
