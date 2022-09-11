@@ -1024,9 +1024,8 @@ def learnAndSolve8b(ctx, sanity_plots=False, plot_widgets=None, plot_pos=None):
             Nfilt = W.shape[1]  # update the number of filters/templates
             # initialize the number of spikes for new templates with the minimum allowed value,
             # so it doesn't get thrown back out right away
-            logger.debug("nsp before extend:" + repr(nsp))
             nsp = _extend(nsp, 0, Nfilt, m0)
-            logger.debug("nsp after extend:" + repr(nsp))
+            
             Params[1] = Nfilt  # update in the CUDA parameters
 
         if flag_resort:

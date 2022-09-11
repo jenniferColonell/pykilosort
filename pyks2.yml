@@ -2,12 +2,12 @@
 # they are required for pykilosort or the tests.
 
 
-name: pyks2
+name: pyks2f
 channels:
   - defaults
   - conda-forge
 dependencies:
- - python >= 3.8
+ - python=3.9.7
  - ipython
  - scipy
  - numpy
